@@ -1,0 +1,5 @@
+{
+  "name": " Strategy Dashboard",
+  "description": "Professional trading dashboard implementing the M5 Support & Resistance Retraction strategy with real-time M1 filtering.",
+  "requestFramePermissions": []
+}
