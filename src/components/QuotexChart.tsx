@@ -8,12 +8,31 @@ interface QuotexChartProps {
 export const QuotexChart: React.FC<QuotexChartProps> = ({ asset, bridgeStatus }) => {
   // Map asset to TradingView symbol
   const cleanAsset = asset.replace(' (OTC)', '');
-  let symbol = `FX:${cleanAsset}`;
+  let symbol = `OANDA:${cleanAsset}`; // Default to OANDA which has most forex pairs
   
-  // Special cases
-  if (cleanAsset === 'XAUUSD') symbol = 'OANDA:XAUUSD';
-  if (cleanAsset === 'BTCUSD') symbol = 'BINANCE:BTCUSDT';
-  if (cleanAsset === 'ETHUSD') symbol = 'BINANCE:ETHUSDT';
+  // Special cases for exotics and crypto
+  const exoticPairs: Record<string, string> = {
+    'USDIDR': 'FX_IDC:USDIDR',
+    'USDBRL': 'FX_IDC:USDBRL',
+    'USDINR': 'FX_IDC:USDINR',
+    'USDARS': 'FX_IDC:USDARS',
+    'USDEGP': 'FX_IDC:USDEGP',
+    'USDPHP': 'FX_IDC:USDPHP',
+    'USDBDT': 'FX_IDC:USDBDT',
+    'USDPKR': 'FX_IDC:USDPKR',
+    'USDNGN': 'FX_IDC:USDNGN',
+    'USDZAR': 'FX:USDZAR',
+    'USDTRY': 'FX:USDTRY',
+    'USDMXN': 'FX:USDMXN',
+    'USDTHB': 'FX_IDC:USDTHB',
+    'XAUUSD': 'OANDA:XAUUSD',
+    'BTCUSD': 'BINANCE:BTCUSDT',
+    'ETHUSD': 'BINANCE:ETHUSDT',
+  };
+
+  if (exoticPairs[cleanAsset]) {
+    symbol = exoticPairs[cleanAsset];
+  }
 
   // Construct iframe URL with indicators
   const urlParams = new URLSearchParams({
