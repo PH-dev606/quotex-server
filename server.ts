@@ -35,6 +35,7 @@ interface QuotexState {
   email: string | null;
   password: string | null;
   isLoggedIn: boolean;
+  balance: number | null;
 }
 
 const state: QuotexState = {
@@ -47,6 +48,7 @@ const state: QuotexState = {
   email: null,
   password: null,
   isLoggedIn: false,
+  balance: null
 };
 
 // --- Persistence (JSON File) ---
@@ -109,8 +111,8 @@ const QUOTEX_WS_URLS = [
 ];
 
 const ASSETS_TO_SUBSCRIBE = [
-  'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'USDCAD', 'EURCAD', 'AUDCAD', 'CADJPY', 'EURGBP', 'GBPCAD', 'GBPCHF', 'USDCHF', 'CADCHF', 'CHFJPY',
-  'EURUSD_OTC', 'GBPUSD_OTC', 'AUDUSD_OTC', 'NZDUSD_OTC', 'USDJPY_OTC', 'EURJPY_OTC', 'GBPJPY_OTC', 'AUDJPY_OTC', 'USDCAD_OTC', 'EURCAD_OTC', 'AUDCAD_OTC', 'CADJPY_OTC', 'EURGBP_OTC', 'GBPCAD_OTC', 'GBPCHF_OTC'
+  'EURUSD', 'GBPUSD', 'AUDUSD', 'NZDUSD', 'USDJPY', 'EURJPY', 'GBPJPY', 'AUDJPY', 'USDCAD', 'EURCAD', 'AUDCAD', 'CADJPY', 'EURGBP', 'GBPCAD', 'GBPCHF', 'USDCHF', 'CADCHF', 'CHFJPY', 'USDBRL', 
+  'USDBRL_OTC', 'USDIDR_OTC', 'NZDUSD_OTC', 'USDARS_OTC', 'USDCOP_OTC', 'USDPHP_OTC', 'USDPKR_OTC', 'AUDNZD_OTC', 'NZDJPY_OTC', 'USDEGP_OTC', 'EURNZD_OTC', 'USDNGN_OTC', 'NZDCAD_OTC'
 ];
 
 let currentWsUrlIndex = 0;
@@ -257,6 +259,17 @@ async function connectQuotex() {
         const payload = JSON.parse(message.substring(11));
         const [type, body] = payload;
 
+        // Try to extract balance from any message that might contain it
+        if (body && typeof body === 'object') {
+          if (body.balance !== undefined) {
+            state.balance = Number(body.balance);
+          } else if (body.data && body.data.balance !== undefined) {
+            state.balance = Number(body.data.balance);
+          } else if (body.account && body.account.balance !== undefined) {
+            state.balance = Number(body.account.balance);
+          }
+        }
+
         // Quotex uses 'p' or 'price' for price updates
         if (type === 'price' || type === 'p') {
           const { asset, price } = body;
@@ -322,60 +335,8 @@ async function connectQuotex() {
 }
 
 // --- Mock Data Fallback ---
-// If no real data is received for an asset, generate some mock data
-// to prevent the "Sem candles disponíveis ainda" error.
-const generateInitialMockData = () => {
-  const now = Math.floor(Date.now() / 1000);
-  const currentMinute = Math.floor(now / 60) * 60;
-
-  ASSETS_TO_SUBSCRIBE.forEach(asset => {
-    const candleKey = `${asset}_60`;
-    if (!state.candles[candleKey] || state.candles[candleKey].length === 0) {
-      state.candles[candleKey] = [];
-      let lastPrice = 1.08 + Math.random() * 0.01;
-      
-      for (let i = 100; i >= 0; i--) {
-        const time = currentMinute - (i * 60);
-        const change = (Math.random() - 0.5) * 0.0002;
-        const open = lastPrice;
-        const close = open + change;
-        const high = Math.max(open, close) + Math.random() * 0.0001;
-        const low = Math.min(open, close) - Math.random() * 0.0001;
-        
-        state.candles[candleKey].push({ time, open, high, low, close, volume: Math.random() * 100 + 50 });
-        lastPrice = close;
-      }
-      state.prices[asset] = lastPrice;
-    }
-  });
-};
-
-// Run immediately to ensure data is available
-generateInitialMockData();
-
-setInterval(() => {
-  const now = Math.floor(Date.now() / 1000);
-  const currentMinute = Math.floor(now / 60) * 60;
-
-  ASSETS_TO_SUBSCRIBE.forEach(asset => {
-    const candleKey = `${asset}_60`;
-    
-    // If we don't have candles for this asset yet, or it hasn't been updated in 30s
-    if (!state.candles[candleKey] || state.candles[candleKey].length < 10) {
-      generateInitialMockData();
-    } else if (!state.connected || (state.lastUpdate[candleKey] && now - state.lastUpdate[candleKey] > 30)) {
-      // Update the current candle with mock data if disconnected or stale
-      let lastCandle = state.candles[candleKey][state.candles[candleKey].length - 1];
-      if (lastCandle) {
-        const change = (Math.random() - 0.5) * 0.0001;
-        lastCandle.close += change;
-        lastCandle.high = Math.max(lastCandle.high, lastCandle.close);
-        lastCandle.low = Math.min(lastCandle.low, lastCandle.close);
-        state.prices[asset] = lastCandle.close;
-      }
-    }
-  });
-}, 5000);
+// Removed mock data generation to ensure the bot falls back to real Binance data
+// when the Quotex WebSocket connection fails.
 
 app.post('/api/quotex/login', (req, res) => {
   const { email, password, remember } = req.body;
@@ -411,7 +372,8 @@ app.get('/api/status', (req, res) => {
     assets: Object.keys(state.prices).length,
     lastUpdate: state.lastUpdate,
     isLoggedIn: state.isLoggedIn,
-    account: state.email ? state.email.replace(/(.{3}).*(@.*)/, '$1***$2') : 'Public'
+    account: state.email ? state.email.replace(/(.{3}).*(@.*)/, '$1***$2') : 'Public',
+    balance: state.balance
   });
 });
 
@@ -471,6 +433,67 @@ app.get('/api/price/:asset', (req, res) => {
 
 app.get('/api/prices', (req, res) => {
   res.json(state.prices);
+});
+
+// --- Yahoo Finance Proxy ---
+app.get('/api/yahoo/:symbol', async (req, res) => {
+  const { symbol } = req.params;
+  const interval = req.query.interval || '1m';
+  const range = interval === '1m' ? '1d' : '5d';
+  
+  // Format symbol for Yahoo Finance (e.g., EURUSD -> EURUSD=X)
+  const cleanSymbol = symbol.replace(' (OTC)', '').replace('_OTC', '').replace('/', '').replace('-', '');
+  let yahooSymbol = `${cleanSymbol}=X`;
+  
+  // Special cases
+  if (cleanSymbol === 'BTCUSD') yahooSymbol = 'BTC-USD';
+  if (cleanSymbol === 'ETHUSD') yahooSymbol = 'ETH-USD';
+  if (cleanSymbol === 'XAUUSD') yahooSymbol = 'GC=F'; // Gold futures
+  
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${interval}&range=${range}`;
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Yahoo Finance API error: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Parse Yahoo Finance data into our Candle format
+    if (!data.chart || !data.chart.result || !data.chart.result[0]) {
+      throw new Error('Invalid data format from Yahoo Finance');
+    }
+    
+    const result = data.chart.result[0];
+    const timestamps = result.timestamp || [];
+    const quote = result.indicators.quote[0] || {};
+    
+    const candles = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (quote.open[i] !== null && quote.close[i] !== null) {
+        candles.push({
+          time: timestamps[i],
+          open: quote.open[i],
+          high: quote.high[i],
+          low: quote.low[i],
+          close: quote.close[i],
+          volume: quote.volume ? quote.volume[i] || 0 : 0
+        });
+      }
+    }
+    
+    res.json({ candles });
+  } catch (e: any) {
+    console.error(`[Yahoo Proxy] Error fetching ${yahooSymbol}:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- Start Server ---
