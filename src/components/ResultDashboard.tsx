@@ -262,73 +262,87 @@ export const ResultDashboard: React.FC<ResultDashboardProps> = ({ bridgeStatus }
                 </div>
 
                 {/* Lista de trades */}
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                <div className="space-y-4 max-h-64 overflow-y-auto pr-1">
                   {trades.filter(t => t.result !== 'PENDING').length === 0 ? (
                     <div className="text-center py-8 text-text-secondary/40 italic text-sm">
                       Nenhum resultado registrado ainda.<br />
                       <span className="text-[11px]">Quando um sinal aparecer, clique WIN ou LOSS acima.</span>
                     </div>
                   ) : (
-                    trades.filter(t => t.result !== 'PENDING').slice(0, 100).map(trade => (
-                      <div key={trade.id} className="flex items-center gap-3 p-3 bg-white/3 rounded-xl border border-white/5 hover:border-white/10 transition-all group">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${trade.result === 'WIN' ? 'bg-primary/20' : 'bg-danger/20'}`}>
-                          {trade.result === 'WIN'
-                            ? <CheckCircle className="w-4 h-4 text-primary" />
-                            : <XCircle className="w-4 h-4 text-danger" />}
+                    Object.entries(
+                      trades.filter(t => t.result !== 'PENDING').reduce((acc, trade) => {
+                        const dateStr = new Date(trade.timestamp * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' });
+                        if (!acc[dateStr]) acc[dateStr] = [];
+                        acc[dateStr].push(trade);
+                        return acc;
+                      }, {} as Record<string, typeof trades>)
+                    ).map(([date, dayTrades]) => (
+                      <div key={date} className="space-y-2">
+                        <div className="sticky top-0 bg-[#0a0b0e]/90 backdrop-blur-sm py-1 z-10 text-[10px] font-black text-text-secondary uppercase tracking-widest border-b border-white/5">
+                          {date}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-black text-white">{trade.asset}</span>
-                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${trade.type === 'CALL' ? 'bg-primary/20 text-primary' : 'bg-danger/20 text-danger'}`}>
-                              {trade.type}
-                            </span>
-                            <span className="text-[9px] text-text-secondary bg-white/5 px-1 rounded">{trade.timeframe}</span>
-                            <span className="text-[9px] text-text-secondary">{trade.confidence}%</span>
+                        {dayTrades.slice(0, 100).map(trade => (
+                          <div key={trade.id} className="flex items-center gap-3 p-3 bg-white/3 rounded-xl border border-white/5 hover:border-white/10 transition-all group">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${trade.result === 'WIN' ? 'bg-primary/20' : 'bg-danger/20'}`}>
+                              {trade.result === 'WIN'
+                                ? <CheckCircle className="w-4 h-4 text-primary" />
+                                : <XCircle className="w-4 h-4 text-danger" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-black text-white">{trade.asset}</span>
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${trade.type === 'CALL' ? 'bg-primary/20 text-primary' : 'bg-danger/20 text-danger'}`}>
+                                  {trade.type}
+                                </span>
+                                <span className="text-[9px] text-text-secondary bg-white/5 px-1 rounded">{trade.timeframe}</span>
+                                <span className="text-[9px] text-text-secondary">{trade.confidence}%</span>
+                              </div>
+                              <div className="text-[9px] text-text-secondary truncate mt-0.5">
+                                {trade.strategy.split(':')[0]} • {trade.entryPrice ? trade.entryPrice.toFixed(5) : 'N/A'}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className={`text-[12px] font-black ${trade.profit >= 0 ? 'text-primary' : 'text-danger'}`}>
+                                {trade.profit >= 0 ? '+' : ''}R$ {trade.profit.toFixed(2)}
+                              </div>
+                              <div className="text-[9px] text-text-secondary flex items-center justify-end gap-1">
+                                <span>R$ {trade.stake.toFixed(2)}</span>
+                                <span className="text-white/30">•</span>
+                                <span>{new Date(trade.timestamp * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <button
+                                onClick={() => {
+                                  const newStake = prompt('Novo valor de entrada (R$):', trade.stake.toString());
+                                  if (newStake && !isNaN(parseFloat(newStake))) {
+                                    const newPayout = prompt('Novo Payout (%):', trade.payout.toString());
+                                    if (newPayout && !isNaN(parseFloat(newPayout))) {
+                                      import('../services/resultTracker').then(({ updateTradeRecord }) => {
+                                        updateTradeRecord(trade.id, { 
+                                          stake: parseFloat(newStake), 
+                                          payout: parseFloat(newPayout) 
+                                        });
+                                        reload();
+                                      });
+                                    }
+                                  }
+                                }}
+                                className="p-1 text-text-secondary hover:text-primary transition-all"
+                                title="Editar entrada/payout"
+                              >
+                                <Settings className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(trade.id)}
+                                className="p-1 text-text-secondary hover:text-danger transition-all"
+                                title="Excluir sinal"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="text-[9px] text-text-secondary truncate mt-0.5">
-                            {trade.strategy.split(':')[0]} • {trade.entryPrice ? trade.entryPrice.toFixed(5) : 'N/A'}
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className={`text-[12px] font-black ${trade.profit >= 0 ? 'text-primary' : 'text-danger'}`}>
-                            {trade.profit >= 0 ? '+' : ''}R$ {trade.profit.toFixed(2)}
-                          </div>
-                          <div className="text-[9px] text-text-secondary flex items-center justify-end gap-1">
-                            <span>R$ {trade.stake.toFixed(2)}</span>
-                            <span className="text-white/30">•</span>
-                            <span>{new Date(trade.timestamp * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                          <button
-                            onClick={() => {
-                              const newStake = prompt('Novo valor de entrada (R$):', trade.stake.toString());
-                              if (newStake && !isNaN(parseFloat(newStake))) {
-                                const newPayout = prompt('Novo Payout (%):', trade.payout.toString());
-                                if (newPayout && !isNaN(parseFloat(newPayout))) {
-                                  import('../services/resultTracker').then(({ updateTradeRecord }) => {
-                                    updateTradeRecord(trade.id, { 
-                                      stake: parseFloat(newStake), 
-                                      payout: parseFloat(newPayout) 
-                                    });
-                                    reload();
-                                  });
-                                }
-                              }
-                            }}
-                            className="p-1 text-text-secondary hover:text-primary transition-all"
-                            title="Editar entrada/payout"
-                          >
-                            <Settings className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(trade.id)}
-                            className="p-1 text-text-secondary hover:text-danger transition-all"
-                            title="Excluir sinal"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        ))}
                       </div>
                     ))
                   )}
